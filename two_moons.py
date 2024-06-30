@@ -9,7 +9,7 @@ from model import *
 from utils import *
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-nets = {'ConvNet': [ConvNet(), 512, 75], 'FCNet': [FCNet(), 256, 20]}
+nets = {'FCNet': [FCNet(), 256, 20]}
 
 def sigmoid(x):
     return 1 / (1 + np.exp(-x))
@@ -62,27 +62,27 @@ def get_train_stats(dataset, pred_model, centroids):
     ucd = []
     with torch.no_grad():
         for images, labels in dataset.train_dl:
-        images = images.to(device).float()
-        with torch.no_grad():
-            score, dist, _, _ = pred_model(images, centroids=centroids)
-            ucd.append(dist.cpu().detach().numpy())
+            images = images.to(device).float()
+            with torch.no_grad():
+                score, dist, _, _ = pred_model(images, centroids=centroids)
+                ucd.append(dist.cpu().detach().numpy())
     ucd = np.amax(np.concatenate(ucd, 0), 1)
     ucd_std = np.std(ucd)
     ucd_05 = np.sort(ucd)[int(1500*(1-0.95))]
-  return ucd_05, ucd_std
+    return ucd_05, ucd_std
 
 def calculate_uc(grid_dl, pred_model, centroids, regular):
     uc = []
     with torch.no_grad():
         for images in grid_dl:
-        images = images.to(device).float()
-        with torch.no_grad():
-            if regular:
-            score, _, _, _ = pred_model(images)
-            uc.append(torch.softmax(score, 1).cpu().detach().numpy())
-            else:
-            score, dist, _, _ = pred_model(images, centroids=centroids)
-            uc.append(dist.cpu().detach().numpy())
+            images = images.to(device).float()
+            with torch.no_grad():
+                if regular:
+                    score, _, _, _ = pred_model(images)
+                    uc.append(torch.softmax(score, 1).cpu().detach().numpy())
+                else:
+                    score, dist, _, _ = pred_model(images, centroids=centroids)
+                    uc.append(dist.cpu().detach().numpy())
     uc = np.concatenate(uc, 0)
     return np.amax(uc, 1)
 

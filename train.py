@@ -12,6 +12,7 @@ import time
 from dataset import Dataset
 from model import *
 from utils import *
+from resnet import *
 
 from torch.utils.data import DataLoader, TensorDataset
 
@@ -99,10 +100,9 @@ def train_step(args, epoch, dataset, pred_model, optimizer, scheduler, metric_hi
 if __name__ == "__main__":
     # get settings
     args = get_args()
-    nets = {'ConvNet': [ConvNet(), 512, 75], 'FCNet': [FCNet(), 256, 20]}
 
     # set directory
-    path = f'models/{args.DATASET}'
+    path = f'/users/hsit/pbj/models/{args.DATASET}'
     if args.REGULAR:
         path += '_reg'
     else:
@@ -124,14 +124,15 @@ if __name__ == "__main__":
         print('Loading dataset')
         dataset = Dataset(args.DATASET)
         args.CLASSES = dataset.n_classes
-        dataset.set_train_dataloader(args.TRAIN_BATCH_SIZE)
+        dataset.set_train_dataloader(args.TRAIN_BATCH_SIZE, t)
         dataset.set_test_dataloader(args.TEST_BATCH_SIZE)
-        dataset.set_centroid_dataloader(args.TRAIN_BATCH_SIZE)
+        dataset.set_centroid_dataloader(args.TRAIN_BATCH_SIZE, t)
 
         # get model
         print('Loading model')
+        nets = {'ResNet50': [ResNet50(), 2048, 200], 'ResNet34': [ResNet34(), 512, 200], 'ResNet18': [ResNet18(), 512, 200], 'ConvNet': [ConvNet(), 512, 75], 'FCNet': [FCNet(), 256, 20]}
         cnn_model = nets[args.NET][0]
-        dist_model = DistNet(args.LATENT_DIM, args.CLASSES, args.REGULAR)
+        dist_model = DistNet(args.LATENT_DIM, args.CLASSES, args.INIT_WEIGHT, args.REGULAR)
         pred_model = PredictionNet(cnn_model, dist_model, nets[args.NET][1], args.LATENT_DIM, args.CLASSES, args.REGULAR)
         pred_model = pred_model.to(device)
 
@@ -146,8 +147,18 @@ if __name__ == "__main__":
             milestones = [25, 50]
             gamma = 0.1
             scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=milestones, gamma=gamma)
+        elif args.NET == 'ResNet18': 
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=200)
+        elif args.NET == 'ResNet34' or args.NET == 'ResNet50':
+            try:
+                joint_optimizer_specs = [{'params': pred_model.convnet.parameters(), 'lr': args.LEARNING_RATE, 'weight_decay': 5e-4},
+                    {'params': pred_model.distnet.parameters(), 'lr': args.LEARNING_RATE*10}, {'params': pred_model.fc1.parameters(), 'lr': args.LEARNING_RATE*10}, {'params': pred_model.bn1.parameters(), 'lr': args.LEARNING_RATE*10}]
+            except:
+                joint_optimizer_specs = [{'params': pred_model.convnet.parameters(), 'lr': args.LEARNING_RATE, 'weight_decay': 5e-4},
+                    {'params': pred_model.fc1.parameters(), 'lr': args.LEARNING_RATE*10}]
+            optimizer = torch.optim.Adam(joint_optimizer_specs)
+            scheduler = None
         else:
-            # optimizer = torch.optim.Adam(pred_model.parameters(), lr=5e-4)
             scheduler = None
 
         # train model

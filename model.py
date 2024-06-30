@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+from torchvision.models import resnet34, resnet50
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
@@ -31,6 +32,26 @@ class ConvNet(nn.Module):
         x = x.flatten(1)
         return x
     
+class ResNet34(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.ResNet34 = resnet34(weights='ResNet34_Weights.DEFAULT')
+        self.ResNet34 = torch.nn.Sequential(*(list(self.ResNet34.children())[:-1]))
+
+    def forward(self, x):
+        x = self.ResNet34(x)
+        return torch.flatten(x, 1)
+    
+class ResNet50(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.ResNet50 = resnet50(weights='ResNet50_Weights.DEFAULT')
+        self.ResNet50 = torch.nn.Sequential(*(list(self.ResNet50.children())[:-1]))
+
+    def forward(self, x):
+        x = self.ResNet50(x)
+        return torch.flatten(x, 1)
+    
 class FCNet(nn.Module):
     def __init__(self):
         super().__init__()
@@ -40,13 +61,13 @@ class FCNet(nn.Module):
         return F.relu(self.fc1(x))
     
 class DistNet(nn.Module):
-    def __init__(self, latent_dim=512, num_classes=10, regular=False):
+    def __init__(self, latent_dim=512, num_classes=10, init_weight=100, regular=False):
         super().__init__()
         if regular:
             self.fc1 = nn.Linear(latent_dim, num_classes, bias=False)
         else:
             self.fc1 = nn.Linear(num_classes, num_classes, bias=False)
-            init_w = torch.eye(num_classes)*(num_classes/(num_classes-1))*100-(1/(num_classes-1))*100
+            init_w = torch.eye(num_classes)*(num_classes/(num_classes-1))*init_weight-(1/(num_classes-1))*init_weight
             self.fc1.weight = nn.Parameter(init_w)
 
     def forward(self, x):
@@ -78,7 +99,10 @@ class PredictionNet(nn.Module):
     def check_labels(self, X, y, dataset):
         missing = list(set(np.arange(dataset.n_classes)) - set(y.cpu().detach().numpy()))
         for i in missing:
-            X = torch.cat([X, dataset.get_example_from_class(i).to(device)], 0)
+            try:
+                X = torch.cat([X, dataset.get_example_from_class(i).unsqueeze(0).to(device)], 0)
+            except:
+                X = torch.cat([X, dataset.get_example_from_class(i)[0].unsqueeze(0).to(device)], 0)
             y = torch.cat([y, torch.tensor([i]).to(device)], 0)
         return X, y
 

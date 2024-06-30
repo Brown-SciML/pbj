@@ -11,6 +11,7 @@ import h5py
 import cv2
 import glob
 import os
+from cub_dataset import CUB
 
 def seed_worker(worker_id):
     worker_seed = torch.initial_seed() % 2**32
@@ -21,14 +22,22 @@ class Dataset:
     """ get or create dataset object associated with filepath """
     def __init__(self, name, ood=False):
         # dataset
+        root_dir = '/users/hsit/scratch/'
         self.X_CE = None
         self.y_CE = None
         if name == "mnist":
-            self.X_train, self.y_train, self.X_test, self.y_test, self.classes, self.n_classes = self.load_mnist('./', ood)
+            self.X_train, self.y_train, self.X_test, self.y_test, self.classes, self.n_classes = self.load_mnist(root_dir, ood)
         if name == "fmnist":
-            self.X_train, self.y_train, self.X_test, self.y_test, self.classes, self.n_classes = self.load_fmnist('./', ood)
+            self.X_train, self.y_train, self.X_test, self.y_test, self.classes, self.n_classes = self.load_fmnist(root_dir, ood)
         if name == "moon":
             self.X_train, self.y_train, self.X_test, self.y_test, self.n_classes = self.load_moon(0.1)
+        if name == "cifar10":
+            self.X_CE, self.y_CE, self.X_test, self.y_test, self.n_classes = self.load_cifar10(root_dir)
+            self.X_train, self.y_train = self.load_cifar10_augment(root_dir)
+        if name == "bird":
+            self.X_CE, self.y_CE, self.X_test, self.n_classes = self.load_bird(root_dir)
+            self.X_train, self.y_train = self.load_bird_augment(root_dir)
+        
         # dataloaders
         self.train_dl = None
         self.test_dl = None
@@ -61,30 +70,76 @@ class Dataset:
         X_train = torch.stack([x for x,_ in train_dataset], 0)
         X_test = torch.stack([x for x,_ in test_dataset], 0)
         return X_train, train_dataset.targets, X_test, test_dataset.targets, train_dataset.classes, len(train_dataset.classes)
+    
+    def load_cifar10(self, root_dir):
+        transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))])
+        train_dataset = torchvision.datasets.CIFAR10(root=root_dir, download=True, train=True, transform=transform)
+        test_dataset = torchvision.datasets.CIFAR10(root=root_dir, download=True, train=False, transform=transform)
+        X_train = torch.stack([x for x,_ in train_dataset], 0)
+        return X_train, train_dataset.targets, test_dataset, test_dataset.targets, len(train_dataset.classes)
 
-    def get_example_from_class(self, class_num, seed=None):
-        X, y = self.X_train, self.y_train
-        class_examples = []
-        class_idx = np.where(y == class_num)[0]
-        idx = np.random.choice(class_idx, 1, replace=True)
-        return X[idx]
+    def load_cifar10_augment(self, root_dir):
+        transform = transforms.Compose([
+            transforms.RandomCrop(32, padding=4),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+        ])
+        train_dataset = torchvision.datasets.CIFAR10(root=root_dir, download=True, train=True, transform=transform)
+        return train_dataset, train_dataset.targets
     
-    def set_train_dataloader(self, batch_size, shuffle=True, drop_last=True):
-        torch.random.manual_seed(0)
-        random.seed(0)
+    def load_bird(self, root_dir):
+        transform = transforms.Compose([
+            transforms.Resize(224),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                std=[0.229, 0.224, 0.225])
+        ])
+        train_dataset = CUB(f'{root_dir}cub2002011/CUB_200_2011/', 'train', transform=transform)
+        X_train = []
+        y_train = []
+        for x, y in train_dataset:
+            y_train.append(y)
+            X_train.append(x)
+        y_train = torch.tensor(y_train)
+        X_train = torch.stack(X_train, 0)
+        test_dataset = CUB(f'{root_dir}cub2002011/CUB_200_2011/', 'test', transform=transform)
+        return X_train, y_train, test_dataset, 200
+
+    def load_bird_augment(self, root_dir):
+        transform = transforms.Compose([
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.RandomRotation(30),
+            transforms.Resize(224),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                std=[0.229, 0.224, 0.225])
+        ])
+        train_dataset = CUB(f'{root_dir}cub2002011/CUB_200_2011/', 'train', transform=transform)
+        y_train = []
+        for x, y in train_dataset:
+            y_train.append(y)
+        y_train = torch.tensor(y_train)
+        return train_dataset, y_train
+    
+    def set_train_dataloader(self, batch_size, seed=0, drop_last=True):
+        torch.random.manual_seed(seed)
+        random.seed(seed)
         g = torch.Generator()
-        g.manual_seed(0)
-        set = TensorDataset(self.X_train, self.y_train)
-        self.train_dl = DataLoader(set, batch_size=batch_size, shuffle=shuffle, num_workers=1, worker_init_fn=seed_worker, generator=g, drop_last=drop_last)
+        g.manual_seed(seed)
+        try:
+            set = TensorDataset(self.X_train, self.y_train)
+        except:
+            set = self.X_train
+        self.train_dl = DataLoader(set, batch_size=batch_size, shuffle=True, num_workers=1, worker_init_fn=seed_worker, generator=g, drop_last=drop_last)
     
-    def set_test_dataloader(self, batch_size, n_samples=1, shuffle=False):
-        A = self.X_test
-        y = self.y_test
-        if n_samples > 1:
-            _, c, iw, ih = A.shape
-            A = torch.tile(A.unsqueeze(1), (1, n_samples, 1, 1, 1)).reshape(-1, c, iw, ih)
-            y = torch.tile(y.unsqueeze(1), (1, n_samples)).reshape(-1)
-        set = TensorDataset(A, y)
+    def set_test_dataloader(self, batch_size, shuffle=False):
+        try:
+            set = TensorDataset(self.X_test, self.y_test)
+        except:
+            set = self.X_test
         self.test_dl = DataLoader(set, batch_size=batch_size, shuffle=shuffle)
     
     def get_prototype_dataloader(self, batch_size, n_samples, shuffle=False):
@@ -96,38 +151,57 @@ class Dataset:
         set = TensorDataset(A, y)
         return DataLoader(set, batch_size=batch_size, shuffle=shuffle)
     
-    def set_centroid_dataloader(self, batch_size, shuffle=True):
-        torch.random.manual_seed(0)
-        random.seed(0)
+    def set_centroid_dataloader(self, batch_size, seed=0, drop_last=True):
+        torch.random.manual_seed(seed)
+        random.seed(seed)
         g = torch.Generator()
-        g.manual_seed(0)
+        g.manual_seed(seed)
         if self.X_CE is None:
-            set = TensorDataset(self.X_train, self.y_train)
+            try:
+                set = TensorDataset(self.X_train, self.y_train)
+            except:
+                set = self.X_train
         else: 
-            set = TensorDataset(self.X_CE, self.y_CE)
-        self.centroid_dl = DataLoader(set, batch_size=batch_size, shuffle=shuffle, num_workers=1, worker_init_fn=seed_worker, generator=g, drop_last=True)
+            try:
+                set = TensorDataset(self.X_CE, self.y_CE)
+            except:
+                set = self.X_CE
+        self.centroid_dl = DataLoader(set, batch_size=batch_size, shuffle=True, num_workers=1, worker_init_fn=seed_worker, generator=g, drop_last=drop_last)
     
     def reset_centroid_dataloader_iter(self):
         if self.X_CE is not None:
             self.centroid_dl_iter = iter(self.centroid_dl)
 
-    def get_class_examples(self, n_ex, seed=None):
+    def get_example_from_class(self, class_num, seed=None):
+        class_idx = np.where(np.array(self.y_train) == class_num)[0]
+        idx = np.random.choice(class_idx, 1, replace=True)[0]
         if self.X_CE is None:
-            X, y = self.X_train, self.y_train
-        else: 
-            X, y = self.X_CE, self.y_CE
+            X = self.X_train[idx]
+        else:
+            X = self.X_CE[idx]
+        return X
+
+    def get_class_examples(self, n_ex, seed=None):
         class_examples = []
-        class_idxs = [np.where(y == i)[0] for i in range(0, self.n_classes)]
+        # try:
+        class_idxs = [np.where(np.array(self.y_train) == i)[0] for i in range(0, self.n_classes)]
         if seed is not None:
             np.random.seed(seed)
         for i in range(self.n_classes):
             idx = np.random.choice(class_idxs[i], n_ex, replace=True)
-            class_examples.append(X[idx])
+            try:
+                class_examples.append(self.X_CE[idx])
+            except:
+                class_examples.append(self.X_train[idx])
         return class_examples
     
     def get_test_by_idx(self, idx, n_samples):
-        A = self.X_test[idx]
-        y = self.y_test[idx]
-        if n_samples > 1:
-            A = A.unsqueeze(0).repeat(tuple([n_samples]) + tuple([1]*len(A.shape)))
+        try:
+            A = self.X_test[idx]
+            y = self.y_test[idx]
+            if n_samples > 1:
+                A = A.unsqueeze(0).repeat(tuple([n_samples]) + tuple([1]*len(A.shape)))
+        except:
+            X, y = self.test_dataset[idx]
+            X = X.unsqueeze(0).tile(n_samples, 1, 1, 1)
         return A, y

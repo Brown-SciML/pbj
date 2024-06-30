@@ -1,6 +1,8 @@
 import numpy as np
 import torch 
 import argparse
+from model import *
+from resnet import * 
 
 ### GLOBAL VARIABLES
 NUM_REPEATS        = 5
@@ -26,6 +28,7 @@ def get_args():
     parser.add_argument('--LEARNING_RATE', type=float, default=LEARNING_RATE)
     parser.add_argument('--CLAMP_MIN', type=float)
     parser.add_argument('--CLAMP_MAX', type=float)
+    parser.add_argument('--INIT_WEIGHT', type=float, default=INIT_WEIGHT)
     return parser.parse_args()
 
 def load_args(path):
@@ -40,9 +43,13 @@ def load_args(path):
 
 def load_model(filepath, model_id):
     args = load_args(filepath+'/train_settings.npz')
+    nets = {'ConvNet': [ConvNet(), 512, 75], 'ResNet18': [ResNet18(), 512, 200], 'ResNet50': [MyResNet50(), 2048, 200], 'ResNet34': [MyResNet34(), 2048, 200]}
 
     cnn_model = nets[args.NET][0]
-    dist_model = DistNet(args.LATENT_DIM, args.CLASSES, args.REGULAR)
+    try:
+        dist_model = DistNet(args.LATENT_DIM, args.CLASSES, args.INIT_WEIGHT, args.REGULAR)
+    except:
+        dist_model = DistNet(args.LATENT_DIM, args.CLASSES, 100, args.REGULAR)
     pred_model = PredictionNet(cnn_model, dist_model, nets[args.NET][1], args.LATENT_DIM, args.CLASSES, args.REGULAR)
     pred_model.load_state_dict(torch.load(filepath+f'/model_{model_id}.pt', map_location=torch.device('cpu')).get('model_state_dict'))
     pred_model = pred_model.to(device)

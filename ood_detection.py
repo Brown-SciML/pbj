@@ -14,6 +14,7 @@ import scipy.optimize as optimize
 from dataset import Dataset
 from model import *
 from utils import *
+from resnet import *
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 print(device)
@@ -68,10 +69,10 @@ def get_uc(dl, pred_model, centroids):
     return y, pred, uc
 
 if __name__ == "__main__":
-    filepath = 'models/mnist_twin_ConvNet_256_256_0.05'
+    filepath = 'models/fmnist_twin_ConvNet_256_256_0.05'
     args, _, _ = load_model(filepath, 0)
 
-    ood_dataset_name = {'mnist': 'fmnist', 'fmnist': 'mnist', 'cifar10': 'svhn'}
+    ood_dataset_name = {'mnist': 'fmnist', 'fmnist': 'mnist'}
     id_data = Dataset(args.DATASET)
     ood_data = Dataset(ood_dataset_name[args.DATASET], ood=True)
     id_data.set_train_dataloader(args.TRAIN_BATCH_SIZE, drop_last=False)
@@ -82,6 +83,7 @@ if __name__ == "__main__":
     print(acc)
     print(np.mean(acc))
     print(np.std(acc))
+
     auroc = get_average_auroc(filepath, id_data.train_dl, id_data.test_dl, ood_data.test_dl)
     print(auroc)
     print(np.mean(auroc))
