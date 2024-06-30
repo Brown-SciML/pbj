@@ -43,7 +43,7 @@ def load_args(path):
 
 def load_model(filepath, model_id):
     args = load_args(filepath+'/train_settings.npz')
-    nets = {'ConvNet': [ConvNet(), 512, 75], 'ResNet18': [ResNet18(), 512, 200], 'ResNet50': [MyResNet50(), 2048, 200], 'ResNet34': [MyResNet34(), 2048, 200]}
+    nets = {'ResNet50': [ResNet50(), 2048, 200], 'ResNet34': [ResNet34(), 512, 200], 'ResNet18': [ResNet18(), 512, 200], 'ConvNet': [ConvNet(), 512, 75], 'FCNet': [FCNet(), 256, 20]}
 
     cnn_model = nets[args.NET][0]
     try:

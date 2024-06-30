@@ -37,7 +37,6 @@ class BasicBlock(nn.Module):
         out = F.relu(out)
         return out
 
-
 class Bottleneck(nn.Module):
     expansion = 4
 
@@ -67,7 +66,6 @@ class Bottleneck(nn.Module):
         out += self.shortcut(x)
         out = F.relu(out)
         return out
-
 
 class ResNet(nn.Module):
     def __init__(self, block, num_blocks, num_classes=10):
@@ -102,26 +100,20 @@ class ResNet(nn.Module):
         # out = self.linear(out)
         return out
 
-
 def ResNet18():
     return ResNet(BasicBlock, [2, 2, 2, 2])
-
 
 def ResNet34():
     return ResNet(BasicBlock, [3, 4, 6, 3])
 
-
 def ResNet50():
     return ResNet(Bottleneck, [3, 4, 6, 3])
-
 
 def ResNet101():
     return ResNet(Bottleneck, [3, 4, 23, 3])
 
-
 def ResNet152():
     return ResNet(Bottleneck, [3, 8, 36, 3])
-
 
 def test():
     net = ResNet18()

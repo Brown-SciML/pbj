@@ -14,8 +14,6 @@ from model import *
 from utils import *
 from resnet import *
 
-from torch.utils.data import DataLoader, TensorDataset
-
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 print(device)
 
@@ -102,7 +100,7 @@ if __name__ == "__main__":
     args = get_args()
 
     # set directory
-    path = f'/users/hsit/pbj/models/{args.DATASET}'
+    path = 'models/{args.DATASET}'
     if args.REGULAR:
         path += '_reg'
     else:
